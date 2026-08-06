@@ -14,6 +14,8 @@ func SetupRoutes(tmdb *services.TMDBClient, cache *services.CacheService) *chi.M
 	r.Use(middleware.CORS)
 	r.Use(middleware.Logger)
 
+	r.Get("/healthz", handlers.HealthCheck)
+
 	trendingHandler := handlers.NewTrendingHandler(tmdb, cache)
 	popularHandler := handlers.NewPopularHandler(tmdb, cache)
 	detailHandler := handlers.NewDetailHandler(tmdb, cache)
