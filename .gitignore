@@ -1,0 +1,41 @@
+# Binarios compilados
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# Compilación Go
+/backend_movies
+/movienova
+/debug/
+/tmp/
+/vendor/
+
+# Variables de entorno (nunca commitear credenciales)
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+logs/
+
+# Archivos de almacenamiento (videos, HLS y subtitles)
+/storage/peliculas/
+
+# IDE y editores
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+*.bak
+*.orig
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
