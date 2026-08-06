@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"os"
 	"os/signal"
@@ -23,22 +22,14 @@ func main() {
 	cfg, err := config.Load()
 	if err != nil {
 		logger.Error("Failed to load config: %v", err)
-		waitForInput()
-		return
+		os.Exit(1)
 	}
 	logger.Success("Configuration loaded")
 
 	logger.Info("Connecting to PostgreSQL (%s:%s/%s)...", cfg.DBHost, cfg.DBPort, cfg.DBName)
 	if err := database.Connect(cfg); err != nil {
-		logger.Error("Could not connect to PostgreSQL")
-		fmt.Println()
-		logger.Error("Reason: %v", err)
-		fmt.Println()
-		logger.Warn("Make sure PostgreSQL is running on %s:%s", cfg.DBHost, cfg.DBPort)
-		logger.Warn("Windows:  net start postgresql-x64-18")
-		fmt.Println()
-		waitForInput()
-		return
+		logger.Error("Could not connect to PostgreSQL: %v", err)
+		os.Exit(1)
 	}
 	defer database.Close()
 	logger.Success("Connected to PostgreSQL")
@@ -46,8 +37,7 @@ func main() {
 	logger.Info("Running migrations...")
 	if err := database.RunMigrations(); err != nil {
 		logger.Error("Failed to run migrations: %v", err)
-		waitForInput()
-		return
+		os.Exit(1)
 	}
 	logger.Success("Migrations completed")
 
@@ -82,9 +72,8 @@ func main() {
 	}
 
 	logger.Separator()
-	logger.Success("Server running on %s", fmt.Sprintf("http://localhost:%s", port))
+	logger.Success("Server running on http://0.0.0.0:%s", port)
 	logger.Info("TMDB API key: %s...", cfg.TMDBAPIKey[:8])
-	logger.Info("Press Ctrl+C to stop")
 	logger.Separator()
 
 	quit := make(chan os.Signal, 1)
@@ -107,11 +96,4 @@ func main() {
 	}
 
 	logger.Success("Server stopped")
-}
-
-func waitForInput() {
-	fmt.Println()
-	logger.Info("Press Enter to close...")
-	bufio := make([]byte, 1)
-	os.Stdin.Read(bufio)
 }

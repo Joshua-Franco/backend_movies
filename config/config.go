@@ -2,8 +2,10 @@ package config
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"backend_movies/logger"
 
@@ -34,19 +36,25 @@ func Load() (*Config, error) {
 		TMDBAPIKey:   getEnv("TMDB_API_KEY", ""),
 		TMDBBaseURL:  getEnv("TMDB_BASE_URL", "https://api.themoviedb.org/3"),
 		TMDBImageURL: getEnv("TMDB_IMAGE_URL", "https://image.tmdb.org/t/p"),
-		DBHost:       getEnv("DB_HOST", "localhost"),
-		DBPort:       getEnv("DB_PORT", "5432"),
-		DBUser:       getEnv("DB_USER", "postgres"),
-		DBPassword:   getEnv("DB_PASSWORD", "postgres"),
-		DBName:       getEnv("DB_NAME", "movienova"),
 		DBSSLMode:    getEnv("DB_SSLMODE", "disable"),
-		ServerPort:   getEnv("SERVER_PORT", "8080"),
+		ServerPort:   getEnv("SERVER_PORT", getEnv("PORT", "8080")),
+	}
+
+	databaseURL := getEnv("DATABASE_URL", "")
+	if databaseURL != "" {
+		cfg.DBHost, cfg.DBPort, cfg.DBUser, cfg.DBPassword, cfg.DBName = parseDatabaseURL(databaseURL)
+	} else {
+		cfg.DBHost = getEnv("DB_HOST", "localhost")
+		cfg.DBPort = getEnv("DB_PORT", "5432")
+		cfg.DBUser = getEnv("DB_USER", "postgres")
+		cfg.DBPassword = getEnv("DB_PASSWORD", "postgres")
+		cfg.DBName = getEnv("DB_NAME", "movienova")
 	}
 
 	if cfg.TMDBAPIKey == "" || cfg.TMDBAPIKey == "YOUR_TMDB_API_KEY_HERE" {
-		logger.Error("TMDB_API_KEY is not set in .env")
+		logger.Error("TMDB_API_KEY is not set")
 		logger.Info("Get your free API key at: https://www.themoviedb.org/settings/api")
-		return nil, fmt.Errorf("TMDB_API_KEY is required in .env file")
+		return nil, fmt.Errorf("TMDB_API_KEY is required")
 	}
 
 	return cfg, nil
@@ -57,6 +65,39 @@ func (c *Config) DatabaseURL() string {
 		"postgres://%s:%s@%s:%s/%s?sslmode=%s",
 		c.DBUser, c.DBPassword, c.DBHost, c.DBPort, c.DBName, c.DBSSLMode,
 	)
+}
+
+func parseDatabaseURL(raw string) (host, port, user, pass, name string) {
+	raw = strings.TrimPrefix(raw, "postgres://")
+	raw = strings.TrimPrefix(raw, "postgresql://")
+
+	if i := strings.Index(raw, "@"); i != -1 {
+		credentials := raw[:i]
+		raw = raw[i+1:]
+		if j := strings.Index(credentials, ":"); j != -1 {
+			user = credentials[:j]
+			pass = credentials[j+1:]
+		}
+	}
+
+	if i := strings.Index(raw, "/"); i != -1 {
+		hostPort := raw[:i]
+		name = raw[i+1:]
+		name = strings.SplitN(name, "?", 2)[0]
+		if j := strings.Index(hostPort, ":"); j != -1 {
+			host = hostPort[:j]
+			port = hostPort[j+1:]
+		} else {
+			host = hostPort
+			port = "5432"
+		}
+	}
+
+	if decodedPass, err := url.QueryUnescape(pass); err == nil {
+		pass = decodedPass
+	}
+
+	return
 }
 
 func getEnv(key, fallback string) string {
