@@ -23,6 +23,11 @@ type Config struct {
 	DBName       string
 	DBSSLMode    string
 	ServerPort   string
+	R2AccountID  string
+	R2AccessKey  string
+	R2SecretKey  string
+	R2Bucket     string
+	R2PublicURL  string
 }
 
 func Load() (*Config, error) {
@@ -38,6 +43,11 @@ func Load() (*Config, error) {
 		TMDBImageURL: getEnv("TMDB_IMAGE_URL", "https://image.tmdb.org/t/p"),
 		DBSSLMode:    getEnv("DB_SSLMODE", "disable"),
 		ServerPort:   getEnv("SERVER_PORT", getEnv("PORT", "8080")),
+		R2AccountID:  getEnv("R2_ACCOUNT_ID", ""),
+		R2AccessKey:  getEnv("R2_ACCESS_KEY_ID", ""),
+		R2SecretKey:  getEnv("R2_SECRET_ACCESS_KEY", ""),
+		R2Bucket:     getEnv("R2_BUCKET_NAME", "movies"),
+		R2PublicURL:  getEnv("R2_PUBLIC_URL", ""),
 	}
 
 	databaseURL := getEnv("DATABASE_URL", "")

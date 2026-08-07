@@ -46,6 +46,14 @@ func main() {
 	cache := services.NewCacheService()
 	logger.Success("TMDB client ready")
 
+	logger.Info("Initializing R2 client...")
+	r2 := services.NewR2Client(cfg)
+	if r2 != nil {
+		logger.Success("R2 client ready")
+	} else {
+		logger.Warn("R2 client failed to initialize")
+	}
+
 	go func() {
 		ticker := time.NewTicker(1 * time.Hour)
 		for range ticker.C {
@@ -53,7 +61,7 @@ func main() {
 		}
 	}()
 
-	router := routes.SetupRoutes(tmdb, cache)
+	router := routes.SetupRoutes(tmdb, cache, r2)
 
 	port := cfg.ServerPort
 	if port == "" {

@@ -108,7 +108,14 @@ func RunMigrations() error {
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_tmdb_cache_key ON tmdb_cache(cache_key)`,
 		`CREATE INDEX IF NOT EXISTS idx_tmdb_cache_expires ON tmdb_cache(expires_at)`,
-		`DROP TABLE IF EXISTS media_files`,
+		`CREATE TABLE IF NOT EXISTS media_files (
+			id SERIAL PRIMARY KEY,
+			tmdb_id INTEGER UNIQUE NOT NULL,
+			movie_name VARCHAR(255) NOT NULL,
+			qualities TEXT[] DEFAULT '{}',
+			created_at TIMESTAMP DEFAULT NOW()
+		)`,
+		`INSERT INTO media_files (tmdb_id, movie_name, qualities) VALUES (969681, 'Spider-Man-Brand-New-Day', ARRAY['1080p','720p','480p']) ON CONFLICT (tmdb_id) DO NOTHING`,
 	}
 
 	for i, m := range migrations {
