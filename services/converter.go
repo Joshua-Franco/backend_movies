@@ -18,10 +18,10 @@ import (
 )
 
 type Quality struct {
-	Name      string
-	Scale     string
-	VBitrate  string
-	ABitrate  string
+	Name     string
+	Scale    string
+	VBitrate string
+	ABitrate string
 }
 
 var Qualities = []Quality{
@@ -31,27 +31,25 @@ var Qualities = []Quality{
 }
 
 type ConverterService struct {
-	config      *config.Config
-	cloudinary  *CloudinaryService
+	config       *config.Config
 	uploadStatus map[string]*UploadStatus
 }
 
 type UploadStatus struct {
-	UploadID     string
-	TMDBID       int
-	MovieName    string
-	Status       string
+	UploadID       string
+	TMDBID         int
+	MovieName      string
+	Status         string
 	CurrentQuality string
-	Progress     int
-	Error        string
-	StartedAt    time.Time
-	CompletedAt  *time.Time
+	Progress       int
+	Error          string
+	StartedAt      time.Time
+	CompletedAt    *time.Time
 }
 
-func NewConverterService(cfg *config.Config, cld *CloudinaryService) *ConverterService {
+func NewConverterService(cfg *config.Config) *ConverterService {
 	return &ConverterService{
 		config:       cfg,
-		cloudinary:   cld,
 		uploadStatus: make(map[string]*UploadStatus),
 	}
 }
@@ -76,6 +74,8 @@ func (s *ConverterService) GetUploadStatus(uploadID string) *UploadStatus {
 func (s *ConverterService) ConvertAndUpload(ctx context.Context, inputPath string, tmdbID int, movieName string) error {
 	uploadID := fmt.Sprintf("%d-%s", tmdbID, strings.ReplaceAll(movieName, " ", "-"))
 	status := s.CreateUploadStatus(uploadID, tmdbID, movieName)
+
+	storagePath := filepath.Join("storage", "peliculas", movieName)
 
 	logger.Info("=== INICIANDO CONVERSIÓN ===")
 	logger.Info("TMDB ID: %d", tmdbID)
@@ -105,13 +105,35 @@ func (s *ConverterService) ConvertAndUpload(ctx context.Context, inputPath strin
 	seconds := int(duration.Seconds()) % 60
 	logger.Info("Duración total: %02d:%02d:%02d", hours, minutes, seconds)
 
-	tmpDir := filepath.Join(os.TempDir(), "movienova-"+uploadID)
-	if err := os.MkdirAll(tmpDir, 0755); err != nil {
+	if err := os.MkdirAll(storagePath, 0755); err != nil {
 		status.Status = "error"
 		status.Error = err.Error()
 		return err
 	}
-	defer os.RemoveAll(tmpDir)
+
+	origDir := filepath.Join(storagePath, "archivo_original")
+	os.MkdirAll(origDir, 0755)
+	origDest := filepath.Join(origDir, filepath.Base(inputPath))
+	if inputPath != origDest {
+		src, err := os.Open(inputPath)
+		if err == nil {
+			dst, err2 := os.Create(origDest)
+			if err2 == nil {
+				buf := make([]byte, 1024*1024)
+				for {
+					n, readErr := src.Read(buf)
+					if n > 0 {
+						dst.Write(buf[:n])
+					}
+					if readErr != nil {
+						break
+					}
+				}
+				dst.Close()
+			}
+			src.Close()
+		}
+	}
 
 	for _, q := range Qualities {
 		status.CurrentQuality = q.Name
@@ -120,7 +142,7 @@ func (s *ConverterService) ConvertAndUpload(ctx context.Context, inputPath strin
 
 		logger.Info("========== Convirtiendo a %s ==========", q.Name)
 
-		outDir := filepath.Join(tmpDir, q.Name)
+		outDir := filepath.Join(storagePath, q.Name)
 		if err := os.MkdirAll(outDir, 0755); err != nil {
 			status.Status = "error"
 			status.Error = err.Error()
@@ -191,24 +213,12 @@ func (s *ConverterService) ConvertAndUpload(ctx context.Context, inputPath strin
 		logger.Success("%s completado ✓", q.Name)
 	}
 
-	status.Status = "uploading"
-	logger.Info("Subiendo a Cloudinary...")
-
-	cloudFolder := fmt.Sprintf("movienova/movies/%s", movieName)
-	if err := s.cloudinary.UploadFolder(tmpDir, cloudFolder); err != nil {
-		status.Status = "error"
-		status.Error = err.Error()
-		logger.Error("Error subiendo a Cloudinary: %v", err)
-		return err
-	}
-
-	logger.Success("Subida a Cloudinary completada ✓")
-
 	status.Status = "saving_db"
 	logger.Info("Guardando en base de datos...")
 
 	for _, q := range Qualities {
-		if err := database.SaveMediaFile(tmdbID, "movie", movieName, q.Name, cloudFolder); err != nil {
+		hlsPath := movieName + "/" + q.Name + "/playlist.m3u8"
+		if err := database.SaveMediaFile(tmdbID, "movie", movieName, q.Name, hlsPath); err != nil {
 			logger.Warn("Error guardando %s en BD: %v", q.Name, err)
 		}
 	}

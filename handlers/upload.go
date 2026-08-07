@@ -4,109 +4,90 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
-	"regexp"
-	"strings"
+	"path/filepath"
 	"time"
 
 	"backend_movies/logger"
 	"backend_movies/services"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/google/uuid"
 )
 
 type UploadHandler struct {
 	converter *services.ConverterService
-	cloudinary *services.CloudinaryService
 }
 
-func NewUploadHandler(converter *services.ConverterService, cld *services.CloudinaryService) *UploadHandler {
+func NewUploadHandler(converter *services.ConverterService) *UploadHandler {
 	return &UploadHandler{
-		converter:  converter,
-		cloudinary: cld,
+		converter: converter,
 	}
 }
 
-func (h *UploadHandler) SignUpload(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		TMDBID    int    `json:"tmdb_id"`
-		MovieName string `json:"movie_name"`
-	}
-
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid JSON: "+err.Error(), http.StatusBadRequest)
+func (h *UploadHandler) Upload(w http.ResponseWriter, r *http.Request) {
+	err := r.ParseMultipartForm(10 << 30) // 10 GB
+	if err != nil {
+		http.Error(w, "Error parsing multipart form: "+err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	if req.TMDBID == 0 {
+	file, header, err := r.FormFile("file")
+	if err != nil {
+		http.Error(w, "No file provided: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	defer file.Close()
+
+	tmdbIDStr := r.FormValue("tmdb_id")
+	if tmdbIDStr == "" {
 		http.Error(w, "tmdb_id is required", http.StatusBadRequest)
 		return
 	}
 
-	if req.MovieName == "" {
-		req.MovieName = fmt.Sprintf("movie-%d", req.TMDBID)
-	}
-
-	// Sanitizar movie_name para Cloudinary
-	safeName := strings.ReplaceAll(req.MovieName, " ", "-")
-	safeName = regexp.MustCompile(`[^a-zA-Z0-9\-]`).ReplaceAllString(safeName, "")
-	
-	publicID := safeName
-	params := h.cloudinary.GenerateSignedUploadURL(publicID)
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(params)
-}
-
-func (h *UploadHandler) CompleteUpload(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		TMDBID     int    `json:"tmdb_id"`
-		MovieName  string `json:"movie_name"`
-		PublicID   string `json:"public_id"`
-	}
-
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid JSON: "+err.Error(), http.StatusBadRequest)
+	var tmdbID int
+	if _, err := fmt.Sscanf(tmdbIDStr, "%d", &tmdbID); err != nil {
+		http.Error(w, "Invalid tmdb_id", http.StatusBadRequest)
 		return
 	}
 
-	if req.TMDBID == 0 {
-		http.Error(w, "tmdb_id is required", http.StatusBadRequest)
-		return
-	}
-	if req.PublicID == "" {
-		http.Error(w, "public_id is required", http.StatusBadRequest)
-		return
-	}
-	if req.MovieName == "" {
-		req.MovieName = fmt.Sprintf("movie-%d", req.TMDBID)
+	movieName := r.FormValue("movie_name")
+	if movieName == "" {
+		movieName = header.Filename
+		movieName = movieName[:len(movieName)-len(filepath.Ext(movieName))]
 	}
 
-	uploadID := uuid.New().String()
+	logger.Info("Upload recibido: %s (TMDB ID: %d)", movieName, tmdbID)
+
+	tmpDir := os.TempDir()
+	tmpFile := filepath.Join(tmpDir, fmt.Sprintf("upload-%d%s", tmdbID, filepath.Ext(header.Filename)))
+
+	dst, err := os.Create(tmpFile)
+	if err != nil {
+		http.Error(w, "Error creating temp file: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	if _, err := io.Copy(dst, file); err != nil {
+		dst.Close()
+		os.Remove(tmpFile)
+		http.Error(w, "Error saving file: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	dst.Close()
+
+	logger.Success("Archivo guardado temporalmente: %s", tmpFile)
 
 	go func() {
 		ctx := context.Background()
-		
-		// Descargar original de Cloudinary
-		tmpDir := fmt.Sprintf("%s/movienova-%s", os.TempDir(), uploadID)
-		inputPath, err := h.cloudinary.DownloadOriginal(req.PublicID, tmpDir)
-		if err != nil {
-			logger.Error("Error descargando original: %v", err)
-			return
+		if err := h.converter.ConvertAndUpload(ctx, tmpFile, tmdbID, movieName); err != nil {
+			logger.Error("Conversión falló: %v", err)
 		}
-
-		// Convertir y subir HLS
-		if err := h.converter.ConvertAndUpload(ctx, inputPath, req.TMDBID, req.MovieName); err != nil {
-			logger.Error("Conversión falló para upload %s: %v", uploadID, err)
-		}
-
-		// Limpiar archivo temporal
-		os.Remove(inputPath)
-		os.RemoveAll(tmpDir)
+		os.Remove(tmpFile)
 	}()
 
+	uploadID := fmt.Sprintf("%d-%s", tmdbID, movieName)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{
 		"upload_id": uploadID,
@@ -125,13 +106,13 @@ func (h *UploadHandler) Status(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response := map[string]interface{}{
-		"upload_id":        status.UploadID,
-		"tmdb_id":          status.TMDBID,
-		"movie_name":       status.MovieName,
-		"status":           status.Status,
-		"current_quality":  status.CurrentQuality,
-		"progress":         status.Progress,
-		"started_at":       status.StartedAt.Format(time.RFC3339),
+		"upload_id":       status.UploadID,
+		"tmdb_id":         status.TMDBID,
+		"movie_name":      status.MovieName,
+		"status":          status.Status,
+		"current_quality": status.CurrentQuality,
+		"progress":        status.Progress,
+		"started_at":      status.StartedAt.Format(time.RFC3339),
 	}
 
 	if status.CompletedAt != nil {

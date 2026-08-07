@@ -8,7 +8,7 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-func SetupRoutes(tmdb *services.TMDBClient, cache *services.CacheService, cld *services.CloudinaryService, converter *services.ConverterService) *chi.Mux {
+func SetupRoutes(tmdb *services.TMDBClient, cache *services.CacheService, converter *services.ConverterService) *chi.Mux {
 	r := chi.NewRouter()
 
 	r.Use(middleware.CORS)
@@ -16,8 +16,8 @@ func SetupRoutes(tmdb *services.TMDBClient, cache *services.CacheService, cld *s
 
 	r.Get("/healthz", handlers.HealthCheck)
 
-	uploadHandler := handlers.NewUploadHandler(converter, cld)
-	streamHandler := handlers.NewStreamHandler(cld)
+	uploadHandler := handlers.NewUploadHandler(converter)
+	streamHandler := handlers.NewStreamHandler()
 
 	trendingHandler := handlers.NewTrendingHandler(tmdb, cache)
 	popularHandler := handlers.NewPopularHandler(tmdb, cache)
@@ -61,8 +61,7 @@ func SetupRoutes(tmdb *services.TMDBClient, cache *services.CacheService, cld *s
 		r.Get("/{mediaType}/{id}", detailHandler.GetDetail)
 
 		r.Route("/upload", func(r chi.Router) {
-			r.Post("/sign", uploadHandler.SignUpload)
-			r.Post("/complete", uploadHandler.CompleteUpload)
+			r.Post("/", uploadHandler.Upload)
 			r.Get("/status/{id}", uploadHandler.Status)
 		})
 	})

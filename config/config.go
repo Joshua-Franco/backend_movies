@@ -13,21 +13,18 @@ import (
 )
 
 type Config struct {
-	TMDBAPIKey           string
-	TMDBBaseURL          string
-	TMDBImageURL         string
-	DBHost               string
-	DBPort               string
-	DBUser               string
-	DBPassword           string
-	DBName               string
-	DBSSLMode            string
-	ServerPort           string
-	CloudinaryCloudName  string
-	CloudinaryAPIKey     string
-	CloudinaryAPISecret  string
-	FFmpegPath           string
-	FFprobePath          string
+	TMDBAPIKey   string
+	TMDBBaseURL  string
+	TMDBImageURL string
+	DBHost       string
+	DBPort       string
+	DBUser       string
+	DBPassword   string
+	DBName       string
+	DBSSLMode    string
+	ServerPort   string
+	FFmpegPath   string
+	FFprobePath  string
 }
 
 func Load() (*Config, error) {
@@ -38,16 +35,13 @@ func Load() (*Config, error) {
 	godotenv.Load()
 
 	cfg := &Config{
-		TMDBAPIKey:          getEnv("TMDB_API_KEY", ""),
-		TMDBBaseURL:         getEnv("TMDB_BASE_URL", "https://api.themoviedb.org/3"),
-		TMDBImageURL:        getEnv("TMDB_IMAGE_URL", "https://image.tmdb.org/t/p"),
-		DBSSLMode:           getEnv("DB_SSLMODE", "disable"),
-		ServerPort:          getEnv("SERVER_PORT", getEnv("PORT", "8080")),
-		CloudinaryCloudName: getEnv("CLOUDINARY_CLOUD_NAME", ""),
-		CloudinaryAPIKey:    getEnv("CLOUDINARY_API_KEY", ""),
-		CloudinaryAPISecret: getEnv("CLOUDINARY_API_SECRET", ""),
-		FFmpegPath:          getEnv("FFMPEG_PATH", "/usr/bin/ffmpeg"),
-		FFprobePath:         getEnv("FFPROBE_PATH", "/usr/bin/ffprobe"),
+		TMDBAPIKey:   getEnv("TMDB_API_KEY", ""),
+		TMDBBaseURL:  getEnv("TMDB_BASE_URL", "https://api.themoviedb.org/3"),
+		TMDBImageURL: getEnv("TMDB_IMAGE_URL", "https://image.tmdb.org/t/p"),
+		DBSSLMode:    getEnv("DB_SSLMODE", "disable"),
+		ServerPort:   getEnv("SERVER_PORT", getEnv("PORT", "8080")),
+		FFmpegPath:   getEnv("FFMPEG_PATH", "/usr/bin/ffmpeg"),
+		FFprobePath:  getEnv("FFPROBE_PATH", "/usr/bin/ffprobe"),
 	}
 
 	databaseURL := getEnv("DATABASE_URL", "")
