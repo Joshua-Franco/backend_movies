@@ -41,17 +41,10 @@ func main() {
 	}
 	logger.Success("Migrations completed")
 
-	logger.Info("Scanning media files...")
-	database.ScanMediaFiles()
-
 	logger.Info("Initializing TMDB client...")
 	tmdb := services.NewTMDBClient(cfg)
 	cache := services.NewCacheService()
 	logger.Success("TMDB client ready")
-
-	logger.Info("Initializing Converter service...")
-	converter := services.NewConverterService(cfg)
-	logger.Success("Converter service ready")
 
 	go func() {
 		ticker := time.NewTicker(1 * time.Hour)
@@ -60,7 +53,7 @@ func main() {
 		}
 	}()
 
-	router := routes.SetupRoutes(tmdb, cache, converter)
+	router := routes.SetupRoutes(tmdb, cache)
 
 	port := cfg.ServerPort
 	if port == "" {

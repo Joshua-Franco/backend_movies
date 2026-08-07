@@ -8,16 +8,13 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-func SetupRoutes(tmdb *services.TMDBClient, cache *services.CacheService, converter *services.ConverterService) *chi.Mux {
+func SetupRoutes(tmdb *services.TMDBClient, cache *services.CacheService) *chi.Mux {
 	r := chi.NewRouter()
 
 	r.Use(middleware.CORS)
 	r.Use(middleware.Logger)
 
 	r.Get("/healthz", handlers.HealthCheck)
-
-	uploadHandler := handlers.NewUploadHandler(converter)
-	streamHandler := handlers.NewStreamHandler()
 
 	trendingHandler := handlers.NewTrendingHandler(tmdb, cache)
 	popularHandler := handlers.NewPopularHandler(tmdb, cache)
@@ -42,8 +39,6 @@ func SetupRoutes(tmdb *services.TMDBClient, cache *services.CacheService, conver
 		r.Get("/discover/companies", discoverHandler.DiscoverByCompanies)
 		r.Get("/discover/tv-companies", discoverHandler.DiscoverTVByCompanies)
 
-		r.Get("/stream/{tmdbId}", streamHandler.GetStreamInfo)
-
 		r.Get("/person/{personId}", personHandler.GetPerson)
 
 		r.Route("/my-list", func(r chi.Router) {
@@ -59,16 +54,7 @@ func SetupRoutes(tmdb *services.TMDBClient, cache *services.CacheService, conver
 		})
 
 		r.Get("/{mediaType}/{id}", detailHandler.GetDetail)
-
-		r.Route("/upload", func(r chi.Router) {
-			r.Post("/", uploadHandler.Upload)
-			r.Get("/status/{id}", uploadHandler.Status)
-		})
 	})
-
-	r.Get("/hls/{movieName}/{quality}/playlist.m3u8", streamHandler.ServePlaylist)
-	r.Get("/hls/{movieName}/{quality}/{segment}.ts", streamHandler.ServeSegment)
-	r.Get("/download/{tmdbId}", streamHandler.GetDownload)
 
 	return r
 }

@@ -23,8 +23,6 @@ type Config struct {
 	DBName       string
 	DBSSLMode    string
 	ServerPort   string
-	FFmpegPath   string
-	FFprobePath  string
 }
 
 func Load() (*Config, error) {
@@ -40,8 +38,6 @@ func Load() (*Config, error) {
 		TMDBImageURL: getEnv("TMDB_IMAGE_URL", "https://image.tmdb.org/t/p"),
 		DBSSLMode:    getEnv("DB_SSLMODE", "disable"),
 		ServerPort:   getEnv("SERVER_PORT", getEnv("PORT", "8080")),
-		FFmpegPath:   getEnv("FFMPEG_PATH", "/usr/bin/ffmpeg"),
-		FFprobePath:  getEnv("FFPROBE_PATH", "/usr/bin/ffprobe"),
 	}
 
 	databaseURL := getEnv("DATABASE_URL", "")
