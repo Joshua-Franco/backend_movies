@@ -41,13 +41,25 @@ func main() {
 	}
 	logger.Success("Migrations completed")
 
-	logger.Info("Scanning local media files...")
+	logger.Info("Scanning media files from database...")
 	database.ScanMediaFiles()
 
 	logger.Info("Initializing TMDB client...")
 	tmdb := services.NewTMDBClient(cfg)
 	cache := services.NewCacheService()
 	logger.Success("TMDB client ready")
+
+	logger.Info("Initializing Cloudinary service...")
+	cld, err := services.NewCloudinaryService(cfg)
+	if err != nil {
+		logger.Warn("Cloudinary not configured: %v", err)
+	} else {
+		logger.Success("Cloudinary service ready")
+	}
+
+	logger.Info("Initializing Converter service...")
+	converter := services.NewConverterService(cfg, cld)
+	logger.Success("Converter service ready")
 
 	go func() {
 		ticker := time.NewTicker(1 * time.Hour)
@@ -56,7 +68,7 @@ func main() {
 		}
 	}()
 
-	router := routes.SetupRoutes(tmdb, cache)
+	router := routes.SetupRoutes(tmdb, cache, cld, converter)
 
 	port := cfg.ServerPort
 	if port == "" {

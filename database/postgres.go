@@ -2,10 +2,7 @@ package database
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"os"
-	"path/filepath"
 	"time"
 
 	"backend_movies/config"
@@ -22,8 +19,9 @@ type MovieInfo struct {
 }
 
 type QualityInfo struct {
-	Quality string `json:"quality"`
-	HLSPath string `json:"hls_path"`
+	Quality          string `json:"quality"`
+	HLSPath          string `json:"hls_path"`
+	CloudinaryFolder string `json:"cloudinary_folder"`
 }
 
 func Connect(cfg *config.Config) error {
@@ -123,7 +121,7 @@ func RunMigrations() error {
 			media_type VARCHAR(10) NOT NULL DEFAULT 'movie',
 			movie_name VARCHAR(255) NOT NULL,
 			quality VARCHAR(10) NOT NULL DEFAULT '1080p',
-			hls_path VARCHAR(500) NOT NULL,
+			cloudinary_folder VARCHAR(255) NOT NULL,
 			created_at TIMESTAMP DEFAULT NOW(),
 			UNIQUE(tmdb_id, quality)
 		)`,
@@ -145,70 +143,56 @@ func Close() {
 }
 
 func ScanMediaFiles() {
-	storagePath := filepath.Join("storage", "peliculas")
-
-	entries, err := os.ReadDir(storagePath)
+	logger.Info("Escaneando media_files desde base de datos...")
+	
+	ctx := context.Background()
+	rows, err := DB.Query(ctx, `
+		SELECT tmdb_id, media_type, movie_name, quality, cloudinary_folder
+		FROM media_files
+		ORDER BY tmdb_id, quality
+	`)
 	if err != nil {
-		logger.Warn("Could not read storage/peliculas: %v", err)
+		logger.Warn("Error escaneando media_files: %v", err)
 		return
 	}
+	defer rows.Close()
 
-	qualities := []string{"1080p", "720p", "480p"}
 	count := 0
-
-	for _, entry := range entries {
-		if !entry.IsDir() {
+	for rows.Next() {
+		var tmdbID int
+		var mediaType, movieName, quality, cloudinaryFolder string
+		if err := rows.Scan(&tmdbID, &mediaType, &movieName, &quality, &cloudinaryFolder); err != nil {
+			logger.Warn("Error leyendo fila: %v", err)
 			continue
 		}
-
-		movieName := entry.Name()
-		infoPath := filepath.Join(storagePath, movieName, "info.json")
-
-		infoData, err := os.ReadFile(infoPath)
-		if err != nil {
-			logger.Warn("No info.json in %s, skipping", movieName)
-			continue
-		}
-
-		var info MovieInfo
-		if err := json.Unmarshal(infoData, &info); err != nil {
-			logger.Warn("Invalid info.json in %s: %v", movieName, err)
-			continue
-		}
-
-		for _, q := range qualities {
-			playlistPath := filepath.Join(storagePath, movieName, q, "playlist.m3u8")
-			if _, err := os.Stat(playlistPath); os.IsNotExist(err) {
-				continue
-			}
-
-			hlsPath := movieName + "/" + q + "/playlist.m3u8"
-
-			_, err := DB.Exec(context.Background(),
-				`INSERT INTO media_files (tmdb_id, media_type, movie_name, quality, hls_path)
-				 VALUES ($1, 'movie', $2, $3, $4)
-				 ON CONFLICT (tmdb_id, quality) DO UPDATE SET movie_name = $2, hls_path = $4`,
-				info.TMDBID, movieName, q, hlsPath,
-			)
-			if err != nil {
-				logger.Warn("Failed to register %s %s: %v", movieName, q, err)
-				continue
-			}
-
-			count++
-		}
+		count++
+		logger.Info("Encontrado: tmdb_id=%d, quality=%s, folder=%s", tmdbID, quality, cloudinaryFolder)
 	}
 
 	if count > 0 {
-		logger.Success("Found %d local media file(s) in storage/peliculas", count)
+		logger.Success("Found %d media file(s) in database", count)
 	} else {
-		logger.Info("No local media files found in storage/peliculas")
+		logger.Info("No media files found in database")
 	}
 }
 
+func SaveMediaFile(tmdbID int, mediaType, movieName, quality, cloudinaryFolder string) error {
+	ctx := context.Background()
+	_, err := DB.Exec(ctx,
+		`INSERT INTO media_files (tmdb_id, media_type, movie_name, quality, cloudinary_folder)
+		 VALUES ($1, $2, $3, $4, $5)
+		 ON CONFLICT (tmdb_id, quality) DO UPDATE SET 
+		 	movie_name = $3, 
+		 	cloudinary_folder = $5`,
+		tmdbID, mediaType, movieName, quality, cloudinaryFolder,
+	)
+	return err
+}
+
 func GetStreamInfo(tmdbID string) (string, []QualityInfo, bool) {
-	rows, err := DB.Query(context.Background(),
-		"SELECT quality, hls_path FROM media_files WHERE tmdb_id = $1 ORDER BY quality DESC",
+	ctx := context.Background()
+	rows, err := DB.Query(ctx,
+		"SELECT quality, cloudinary_folder FROM media_files WHERE tmdb_id = $1 ORDER BY quality DESC",
 		tmdbID,
 	)
 	if err != nil {
@@ -221,13 +205,13 @@ func GetStreamInfo(tmdbID string) (string, []QualityInfo, bool) {
 
 	for rows.Next() {
 		var q QualityInfo
-		if err := rows.Scan(&q.Quality, &q.HLSPath); err != nil {
+		if err := rows.Scan(&q.Quality, &q.CloudinaryFolder); err != nil {
 			continue
 		}
 		qualities = append(qualities, q)
 
 		if movieName == "" {
-			DB.QueryRow(context.Background(),
+			DB.QueryRow(ctx,
 				"SELECT movie_name FROM media_files WHERE tmdb_id = $1 LIMIT 1",
 				tmdbID,
 			).Scan(&movieName)
@@ -239,4 +223,14 @@ func GetStreamInfo(tmdbID string) (string, []QualityInfo, bool) {
 	}
 
 	return movieName, qualities, true
+}
+
+func GetCloudinaryFolder(movieName, quality string) (string, error) {
+	ctx := context.Background()
+	var folder string
+	err := DB.QueryRow(ctx,
+		"SELECT cloudinary_folder FROM media_files WHERE movie_name = $1 AND quality = $2",
+		movieName, quality,
+	).Scan(&folder)
+	return folder, err
 }

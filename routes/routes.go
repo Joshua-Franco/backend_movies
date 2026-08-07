@@ -8,7 +8,7 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-func SetupRoutes(tmdb *services.TMDBClient, cache *services.CacheService) *chi.Mux {
+func SetupRoutes(tmdb *services.TMDBClient, cache *services.CacheService, cld *services.CloudinaryService, converter *services.ConverterService) *chi.Mux {
 	r := chi.NewRouter()
 
 	r.Use(middleware.CORS)
@@ -16,13 +16,15 @@ func SetupRoutes(tmdb *services.TMDBClient, cache *services.CacheService) *chi.M
 
 	r.Get("/healthz", handlers.HealthCheck)
 
+	uploadHandler := handlers.NewUploadHandler(converter)
+	streamHandler := handlers.NewStreamHandler(cld)
+
 	trendingHandler := handlers.NewTrendingHandler(tmdb, cache)
 	popularHandler := handlers.NewPopularHandler(tmdb, cache)
 	detailHandler := handlers.NewDetailHandler(tmdb, cache)
 	searchHandler := handlers.NewSearchHandler(tmdb, cache)
 	genresHandler := handlers.NewGenresHandler(tmdb, cache)
 	userHandler := handlers.NewUserHandler()
-	streamHandler := handlers.NewStreamHandler()
 	discoverHandler := handlers.NewDiscoverHandler(tmdb, cache)
 	personHandler := handlers.NewPersonHandler(tmdb, cache)
 
@@ -41,7 +43,7 @@ func SetupRoutes(tmdb *services.TMDBClient, cache *services.CacheService) *chi.M
 		r.Get("/discover/tv-companies", discoverHandler.DiscoverTVByCompanies)
 
 		r.Get("/stream/{tmdbId}", streamHandler.GetStreamInfo)
-		r.Post("/stream/scan", streamHandler.ScanMedia)
+
 		r.Get("/person/{personId}", personHandler.GetPerson)
 
 		r.Route("/my-list", func(r chi.Router) {
@@ -57,11 +59,16 @@ func SetupRoutes(tmdb *services.TMDBClient, cache *services.CacheService) *chi.M
 		})
 
 		r.Get("/{mediaType}/{id}", detailHandler.GetDetail)
+
+		r.Route("/upload", func(r chi.Router) {
+			r.Post("/", uploadHandler.Upload)
+			r.Get("/status/{id}", uploadHandler.Status)
+		})
 	})
 
-	r.Get("/download/{tmdbId}", streamHandler.GetDownload)
 	r.Get("/hls/{movieName}/{quality}/playlist.m3u8", streamHandler.ServePlaylist)
 	r.Get("/hls/{movieName}/{quality}/{segment}.ts", streamHandler.ServeSegment)
+	r.Get("/download/{tmdbId}", streamHandler.GetDownload)
 
 	return r
 }
