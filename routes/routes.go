@@ -16,7 +16,7 @@ func SetupRoutes(tmdb *services.TMDBClient, cache *services.CacheService, cld *s
 
 	r.Get("/healthz", handlers.HealthCheck)
 
-	uploadHandler := handlers.NewUploadHandler(converter)
+	uploadHandler := handlers.NewUploadHandler(converter, cld)
 	streamHandler := handlers.NewStreamHandler(cld)
 
 	trendingHandler := handlers.NewTrendingHandler(tmdb, cache)
@@ -61,7 +61,8 @@ func SetupRoutes(tmdb *services.TMDBClient, cache *services.CacheService, cld *s
 		r.Get("/{mediaType}/{id}", detailHandler.GetDetail)
 
 		r.Route("/upload", func(r chi.Router) {
-			r.Post("/", uploadHandler.Upload)
+			r.Post("/sign", uploadHandler.SignUpload)
+			r.Post("/complete", uploadHandler.CompleteUpload)
 			r.Get("/status/{id}", uploadHandler.Status)
 		})
 	})

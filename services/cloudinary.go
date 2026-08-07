@@ -2,9 +2,13 @@ package services
 
 import (
 	"context"
+	"crypto/sha1"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"path/filepath"
+	"time"
 
 	"backend_movies/config"
 	"backend_movies/logger"
@@ -101,4 +105,71 @@ func (s *CloudinaryService) DeleteFolder(cloudFolder string) error {
 
 func boolPtr(b bool) *bool {
 	return &b
+}
+
+func (s *CloudinaryService) GenerateSignedUploadURL(publicID string) map[string]interface{} {
+	timestamp := time.Now().Unix()
+	
+	// Parámetros que deben ser firmados (orden alfabético para consistencia)
+	// Cloudinary requiere: folder, public_id, timestamp
+	paramsToSign := fmt.Sprintf("folder=movienova/originals&public_id=%s&timestamp=%d", publicID, timestamp)
+	
+	// Generar signature usando HMAC-SHA1 con el API secret
+	h := sha1.New()
+	h.Write([]byte(paramsToSign + s.config.CloudinaryAPISecret))
+	signature := fmt.Sprintf("%x", h.Sum(nil))
+	
+	return map[string]interface{}{
+		"cloud_name":  s.config.CloudinaryCloudName,
+		"api_key":     s.config.CloudinaryAPIKey,
+		"timestamp":   timestamp,
+		"signature":   signature,
+		"public_id":   publicID,
+		"folder":      "movienova/originals",
+		"upload_url":  fmt.Sprintf("https://api.cloudinary.com/v1_1/%s/video/upload", s.config.CloudinaryCloudName),
+	}
+}
+
+func (s *CloudinaryService) DownloadOriginal(publicID, destDir string) (string, error) {
+	url := fmt.Sprintf("https://res.cloudinary.com/%s/video/upload/%s", s.config.CloudinaryCloudName, publicID)
+	
+	// Crear directorio destino si no existe
+	if err := os.MkdirAll(destDir, 0755); err != nil {
+		return "", fmt.Errorf("crear directorio: %w", err)
+	}
+	
+	// Obtener extensión del publicID o usar .mkv por defecto
+	ext := filepath.Ext(publicID)
+	if ext == "" {
+		ext = ".mkv"
+	}
+	
+	destFile := filepath.Join(destDir, fmt.Sprintf("%s%s", filepath.Base(publicID), ext))
+	
+	logger.Info("Descargando original de Cloudinary: %s", url)
+	
+	resp, err := http.Get(url)
+	if err != nil {
+		return "", fmt.Errorf("error HTTP: %w", err)
+	}
+	defer resp.Body.Close()
+	
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("Cloudinary retornó %d", resp.StatusCode)
+	}
+	
+	out, err := os.Create(destFile)
+	if err != nil {
+		return "", fmt.Errorf("crear archivo: %w", err)
+	}
+	defer out.Close()
+	
+	// Copiar con progreso
+	written, err := io.Copy(out, resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("guardar archivo: %w", err)
+	}
+	
+	logger.Success("Original descargado: %s (%.2f MB)", destFile, float64(written)/1024/1024)
+	return destFile, nil
 }
