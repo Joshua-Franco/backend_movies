@@ -194,7 +194,7 @@ func (s *ConverterService) ConvertAndUpload(ctx context.Context, inputPath strin
 	status.Status = "uploading"
 	logger.Info("Subiendo a Cloudinary...")
 
-	cloudFolder := fmt.Sprintf("movienova/movies/%d", tmdbID)
+	cloudFolder := fmt.Sprintf("movienova/movies/%s", movieName)
 	if err := s.cloudinary.UploadFolder(tmpDir, cloudFolder); err != nil {
 		status.Status = "error"
 		status.Error = err.Error()

@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"regexp"
+	"strings"
 	"time"
 
 	"backend_movies/logger"
@@ -47,7 +49,11 @@ func (h *UploadHandler) SignUpload(w http.ResponseWriter, r *http.Request) {
 		req.MovieName = fmt.Sprintf("movie-%d", req.TMDBID)
 	}
 
-	publicID := fmt.Sprintf("%d", req.TMDBID)
+	// Sanitizar movie_name para Cloudinary
+	safeName := strings.ReplaceAll(req.MovieName, " ", "-")
+	safeName = regexp.MustCompile(`[^a-zA-Z0-9\-]`).ReplaceAllString(safeName, "")
+	
+	publicID := safeName
 	params := h.cloudinary.GenerateSignedUploadURL(publicID)
 
 	w.Header().Set("Content-Type", "application/json")
