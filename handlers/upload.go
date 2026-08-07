@@ -28,7 +28,7 @@ func NewUploadHandler(converter *services.ConverterService) *UploadHandler {
 }
 
 func (h *UploadHandler) Upload(w http.ResponseWriter, r *http.Request) {
-	err := r.ParseMultipartForm(100 << 20)
+	err := r.ParseMultipartForm(10 << 30) // 10 GB
 	if err != nil {
 		http.Error(w, "Error parsing multipart form: "+err.Error(), http.StatusBadRequest)
 		return
