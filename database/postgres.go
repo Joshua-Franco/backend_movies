@@ -2,12 +2,13 @@ package database
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
 	"backend_movies/config"
-	"backend_movies/logger"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -22,54 +23,32 @@ func Connect(cfg *config.Config) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	var err error
-	DB, err = pgxpool.New(ctx, cfg.DatabaseURL())
+	poolConfig, err := pgxpool.ParseConfig(cfg.DatabaseURL())
 	if err != nil {
-		return fmt.Errorf("connection pool creation failed: %w", err)
+		return fmt.Errorf("invalid PostgreSQL connection configuration; check DATABASE_URL or DB_* settings")
 	}
 
-	if err = DB.Ping(ctx); err != nil {
-		DB.Close()
-		logger.Warn("Database '%s' does not exist, creating it...", cfg.DBName)
-		createErr := createDatabase(cfg)
-		if createErr != nil {
-			return fmt.Errorf("could not create database '%s': %w", cfg.DBName, createErr)
-		}
-		logger.Success("Database '%s' created", cfg.DBName)
+	poolConfig.ConnConfig.ConnectTimeout = 10 * time.Second
+	poolConfig.MaxConns = 10
+	poolConfig.MinConns = 0
+	poolConfig.MaxConnLifetime = time.Hour
+	poolConfig.MaxConnIdleTime = 30 * time.Minute
 
-		DB, err = pgxpool.New(ctx, cfg.DatabaseURL())
-		if err != nil {
-			return fmt.Errorf("connection pool creation failed after db creation: %w", err)
-		}
-
-		if err = DB.Ping(ctx); err != nil {
-			return fmt.Errorf("ping failed after db creation: %w", err)
-		}
-	}
-
-	return nil
-}
-
-func createDatabase(cfg *config.Config) error {
-	connStr := fmt.Sprintf(
-		"postgres://%s:%s@%s:%s/postgres?sslmode=%s",
-		cfg.DBUser, cfg.DBPassword, cfg.DBHost, cfg.DBPort, cfg.DBSSLMode,
-	)
-
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	pool, err := pgxpool.New(ctx, connStr)
+	pool, err := pgxpool.NewWithConfig(ctx, poolConfig)
 	if err != nil {
-		return fmt.Errorf("cannot connect to postgres server: %w", err)
-	}
-	defer pool.Close()
-
-	_, err = pool.Exec(ctx, fmt.Sprintf(`CREATE DATABASE "%s"`, cfg.DBName))
-	if err != nil {
-		return fmt.Errorf("CREATE DATABASE failed: %w", err)
+		return fmt.Errorf("PostgreSQL connection pool initialization failed: %w", err)
 	}
 
+	if err = pool.Ping(ctx); err != nil {
+		pool.Close()
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "3D000" {
+			return fmt.Errorf("PostgreSQL database %q does not exist; set DATABASE_URL to Neon's existing neondb database", cfg.DBName)
+		}
+		return fmt.Errorf("PostgreSQL ping failed: %w", err)
+	}
+
+	DB = pool
 	return nil
 }
 
@@ -118,8 +97,8 @@ func RunMigrations() error {
 		`INSERT INTO media_files (tmdb_id, movie_name, qualities) VALUES (969681, 'Spider-Man-Brand-New-Day', ARRAY['1080p','720p','480p']) ON CONFLICT (tmdb_id) DO NOTHING`,
 	}
 
-	for i, m := range migrations {
-		if _, err := DB.Exec(ctx, m); err != nil {
+	for i, migration := range migrations {
+		if _, err := DB.Exec(ctx, migration); err != nil {
 			return fmt.Errorf("migration #%d failed: %w", i+1, err)
 		}
 	}

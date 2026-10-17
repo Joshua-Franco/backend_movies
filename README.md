@@ -31,18 +31,36 @@ Backend corre en `http://localhost:8080`.
 
 ## Variables de entorno
 
-| Variable | Descripción | Default |
+En producción configura `TMDB_API_KEY` y `DATABASE_URL`. Para Neon usa la cadena
+completa de conexión de la base `neondb` (el endpoint pooled es compatible); la
+aplicación conserva sus parámetros, incluido `channel_binding=require`, y exige
+TLS (`sslmode=require`). No se crean bases automáticamente. En Render, `PORT`
+se usa antes que `SERVER_PORT`; el archivo `.env` es opcional y las variables del
+entorno del proceso tienen prioridad sobre él.
+
+| Variable | Descripción | Requerida / default |
 |---|---|---|
-| `TMDB_API_KEY` | API key de TMDB | requerido |
+| `TMDB_API_KEY` | API key de TMDB | Requerida |
+| `DATABASE_URL` | URL completa PostgreSQL/Neon | Requerida en Render; si se define, tiene prioridad sobre `DB_*` |
+| `DB_HOST` | Host PostgreSQL (modo de compatibilidad) | `localhost` |
+| `DB_PORT` | Puerto PostgreSQL (modo de compatibilidad) | `5432` |
+| `DB_USER` | Usuario PostgreSQL (modo de compatibilidad) | `postgres` |
+| `DB_PASSWORD` | Contraseña PostgreSQL (modo de compatibilidad) | `postgres` |
+| `DB_NAME` | Base PostgreSQL (modo de compatibilidad) | `movienova` |
+| `DB_SSLMODE` | Modo TLS (modo de compatibilidad) | `require`; valores sin TLS se elevan a `require` |
+| `PORT` | Puerto HTTP asignado por la plataforma | Se usa antes que `SERVER_PORT` |
+| `SERVER_PORT` | Puerto HTTP local/de compatibilidad | `8080` |
 | `TMDB_BASE_URL` | URL base de TMDB API | `https://api.themoviedb.org/3` |
-| `TMDB_IMAGE_URL` | URL base de imágenes | `https://image.tmdb.org/t/p` |
-| `DB_HOST` | Host de PostgreSQL | `localhost` |
-| `DB_PORT` | Puerto de PostgreSQL | `5432` |
-| `DB_USER` | Usuario de PostgreSQL | `postgres` |
-| `DB_PASSWORD` | Contraseña de PostgreSQL | requerido |
-| `DB_NAME` | Nombre de la base de datos | `movienova` |
-| `DB_SSLMODE` | Modo SSL | `disable` |
-| `SERVER_PORT` | Puerto del servidor | `8080` |
+| `TMDB_IMAGE_URL` | URL base de imágenes TMDB | `https://image.tmdb.org/t/p` |
+| `R2_ACCOUNT_ID` | Cuenta de Cloudflare R2 | Opcional |
+| `R2_ACCESS_KEY_ID` | Clave de acceso R2 | Opcional |
+| `R2_SECRET_ACCESS_KEY` | Clave secreta R2 | Opcional |
+| `R2_BUCKET_NAME` | Bucket R2 | `movies` |
+| `R2_PUBLIC_URL` | URL pública R2 | Opcional |
+
+Si se utiliza `DATABASE_URL`, establece el hostname pooled/directo y el nombre de
+base dentro de esa misma URL; no combines la URL con un hostname en `DB_HOST`.
+`DB_*` solo se utiliza cuando `DATABASE_URL` no está definida.
 
 ## Estructura
 
